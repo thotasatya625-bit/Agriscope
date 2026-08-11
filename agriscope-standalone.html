@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AgriScope — Field Advisory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.6/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #EFE8D8; }
+  * { box-sizing: border-box; }
+  .agri-font-display { font-family: 'Fraunces', serif; }
+  .agri-font-mono { font-family: 'IBM Plex Mono', monospace; }
+  .agri-btn { transition: transform .15s ease, box-shadow .15s ease; }
+  .agri-btn:active { transform: scale(0.97); }
+  .agri-card { box-shadow: 0 2px 0 rgba(43,36,22,0.08), 0 8px 20px -10px rgba(43,36,22,0.25); }
+  .stamp-rotate { transform: rotate(-6deg); }
+  input[type=file] { display: none; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #2B2416; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef, useCallback } = React;
+
+/* ---------- minimal inline icon set (no external icon lib needed) ---------- */
+const Icon = ({ children, size = 16, color = "currentColor", style }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"
+       strokeLinecap="round" strokeLinejoin="round" style={style}>{children}</svg>
+);
+const Leaf = (p) => <Icon {...p}><path d="M11 20A7 7 0 0 1 4 13H4a7 7 0 0 1 7-7c4 0 7 2 9 5 2 3 2 6 0 9-2-2-5-2-9 0z"/></Icon>;
+const Camera = (p) => <Icon {...p}><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></Icon>;
+const MapPin = (p) => <Icon {...p}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></Icon>;
+const CloudRain = (p) => <Icon {...p}><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/><path d="M8 19v2M12 19v2M16 19v2"/></Icon>;
+const Wind = (p) => <Icon {...p}><path d="M9.59 4.59A2 2 0 1 1 11 8H2M12.59 19.41A2 2 0 1 0 14 16H2M17.73 7.73A2.5 2.5 0 1 1 19.5 12H2"/></Icon>;
+const Droplets = (p) => <Icon {...p}><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></Icon>;
+const AlertTriangle = (p) => <Icon {...p}><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></Icon>;
+const CheckCircle2 = (p) => <Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></Icon>;
+const Stamp = (p) => <Icon {...p}><path d="M5 22h14M5 18h14M17 18v-2a5 5 0 0 0-10 0v2M12 2v4M8 6h8"/></Icon>;
+const ChevronRight = (p) => <Icon {...p}><path d="m9 18 6-6-6-6"/></Icon>;
+const Upload = (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></Icon>;
+const RotateCcw = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></Icon>;
+const ThermometerSun = (p) => <Icon {...p}><path d="M12 9a4 4 0 0 0-2 7.46M22 12h1M14 4h-4v9.5a3.5 3.5 0 1 0 4 0z"/></Icon>;
+
+/* ---------- deterministic "seeded" helpers so results are stable per input ---------- */
+function hashString(str) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+
+const CROPS = ["Tomato", "Chilli", "Cotton", "Paddy (Rice)", "Groundnut", "Maize", "Other / Generic"];
+
+const DIAGNOSES = {
+  healthy: { label: "No significant stress detected", severity: "low",
+    summary: "Leaf tissue reads as predominantly healthy green with no meaningful necrotic or chlorotic signal.",
+    action: "No treatment needed. Recheck in 5–7 days, especially after rain.", product: null },
+  fungal: { label: "Likely fungal leaf spot (Cercospora / Alternaria pattern)", severity: "high",
+    summary: "Clustered brown, dry, necrotic patches were detected — the signature pattern of fungal leaf-spot diseases, which spread fastest in humid, still air.",
+    action: "Remove and destroy the worst-affected leaves. Apply a protectant fungicide before the next humid spell, never right before rain.",
+    product: "Copper oxychloride 3g/L water, or Mancozeb 2.5g/L. Spray to full leaf coverage, both sides." },
+  bacterial: { label: "Likely bacterial blight / leaf spot", severity: "high",
+    summary: "Dark, water-soaked spots with yellow haloing were detected — typical of bacterial infection, which moves fast in wet, warm conditions and spreads via splashing water.",
+    action: "Avoid overhead irrigation. Improve drainage and airflow between plants. Copper-based bactericide is the standard field response.",
+    product: "Copper hydroxide 2.5g/L water. Do not mix with high-nitrogen foliar feed this week." },
+  chlorosis: { label: "Likely nutrient stress (nitrogen or iron chlorosis)", severity: "medium",
+    summary: "Yellowing without significant necrotic tissue was detected — more consistent with a nutrient deficiency or early water stress than active infection.",
+    action: "Check soil moisture and recent fertilizer schedule first. A foliar micronutrient feed usually resolves this faster than soil dosing.",
+    product: "Foliar spray: 19:19:19 NPK at 5g/L, or chelated iron 2g/L if veins stay green while leaf yellows." },
+  monitor: { label: "Early-stage stress — inconclusive", severity: "medium",
+    summary: "A mild mix of discoloration was detected, below the threshold for a confident call either way.",
+    action: "Re-photograph in 2–3 days in better light. Watch for spreading before treating — avoid unnecessary spraying.", product: null },
+};
+
+/* ---------- lightweight client-side pixel-heuristic "vision model" ---------- */
+function analyzeLeafPixels(imageData) {
+  const { data } = imageData;
+  let green = 0, yellow = 0, brown = 0, dark = 0, other = 0, total = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+    if (a < 40) continue;
+    total++;
+    const brightness = (r + g + b) / 3;
+    const isGreenDominant = g > r + 12 && g > b + 12;
+    const isYellow = r > 140 && g > 130 && b < r * 0.7 && Math.abs(r - g) < 55;
+    const isBrown = r > 80 && r < 190 && g < r * 0.82 && b < g * 0.9 && brightness > 40 && brightness < 150;
+    const isDarkSpot = brightness < 55;
+    if (isDarkSpot) dark++;
+    else if (isBrown) brown++;
+    else if (isYellow) yellow++;
+    else if (isGreenDominant) green++;
+    else other++;
+  }
+  if (total === 0) return null;
+  return { greenPct: green/total*100, yellowPct: yellow/total*100, brownPct: brown/total*100, darkPct: dark/total*100, otherPct: other/total*100 };
+}
+
+function diagnose(stats) {
+  const stressPct = stats.yellowPct + stats.brownPct + stats.darkPct;
+  const scored = [
+    { key: "fungal", score: stats.brownPct * 1.6 + stats.darkPct * 0.4 },
+    { key: "bacterial", score: stats.darkPct * 1.7 + stats.yellowPct * 0.35 },
+    { key: "chlorosis", score: stats.yellowPct * 1.5 - stats.brownPct * 0.5 },
+  ].sort((a, b) => b.score - a.score);
+
+  let key;
+  if (stressPct < 8) key = "healthy";
+  else if (stressPct < 16) key = "monitor";
+  else key = scored[0].key;
+
+  const top = scored[0].score, second = scored[1] ? scored[1].score : 0;
+  const margin = top > 0 ? (top - second) / top : 0;
+  let confidence = key === "healthy" ? 92 - stressPct : key === "monitor" ? 55 + stressPct : Math.min(96, 62 + margin * 30 + stressPct * 0.4);
+  confidence = Math.max(38, Math.min(97, Math.round(confidence)));
+  return { key, confidence, diag: DIAGNOSES[key], stats };
+}
+
+function buildForecast(seedText) {
+  const rand = hashString(seedText || "field");
+  const baseTemp = 26 + rand() * 8;
+  const days = [];
+  const dayNames = ["Today", "Tomorrow", "Day 3", "Day 4", "Day 5"];
+  for (let i = 0; i < 5; i++) {
+    const drift = (rand() - 0.5) * 6;
+    const rain = Math.round(Math.max(0, Math.min(95, rand() * 100 - i * 4)));
+    const wind = Math.round(4 + rand() * 26);
+    const humidity = Math.round(45 + rand() * 45);
+    const temp = Math.round(baseTemp + drift);
+    days.push({ day: dayNames[i], temp, rain, wind, humidity });
+  }
+  return days;
+}
+
+function pickSprayWindow(forecast) {
+  const scored = forecast.map((d, idx) => {
+    let score = 100;
+    if (d.rain > 40) score -= 60; else if (d.rain > 20) score -= 25;
+    if (d.wind > 18) score -= 35; else if (d.wind > 12) score -= 15;
+    if (d.humidity > 85) score -= 10;
+    if (d.temp > 34) score -= 10;
+    return { ...d, idx, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  return { best, safe: best.score >= 55, ranked: scored };
+}
+
+const sevColor = { low: "#4C7A3A", medium: "#C98A2C", high: "#B5432E" };
+
+function AgriScope() {
+  const [step, setStep] = useState(1);
+  const [imgSrc, setImgSrc] = useState(null);
+  const [crop, setCrop] = useState(CROPS[0]);
+  const [location, setLocation] = useState("");
+  const [result, setResult] = useState(null);
+  const [forecast, setForecast] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const canvasRef = useRef(null);
+  const fileRef = useRef(null);
+
+  const handleFile = useCallback((file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => setImgSrc(e.target.result);
+    reader.readAsDataURL(file);
+  }, []);
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const { latitude, longitude } = pos.coords;
+      setLocation(`Lat ${latitude.toFixed(2)}, Lon ${longitude.toFixed(2)}`);
+    }, () => {});
+  };
+
+  const runAnalysis = () => {
+    setLoading(true);
+    setTimeout(() => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = canvasRef.current;
+        const w = 220, h = Math.round((img.height / img.width) * 220) || 220;
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const data = ctx.getImageData(0, 0, w, h);
+        const stats = analyzeLeafPixels(data);
+        const diagResult = diagnose(stats);
+        const fc = buildForecast((location || "field") + crop);
+        setResult(diagResult); setForecast(fc); setLoading(false); setStep(4);
+      };
+      img.src = imgSrc;
+    }, 700);
+  };
+
+  const reset = () => { setStep(1); setImgSrc(null); setResult(null); setForecast(null); setLocation(""); };
+  const spray = forecast ? pickSprayWindow(forecast) : null;
+
+  return (
+    <div style={{ background: "#EFE8D8", minHeight: "100vh" }}>
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "28px 18px 60px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: "#3A2E1F", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Leaf size={20} color="#9CC26B" />
+          </div>
+          <div>
+            <div className="agri-font-display" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>AgriScope</div>
+            <div className="agri-font-mono" style={{ fontSize: 10.5, letterSpacing: 1, color: "#6B5E45", textTransform: "uppercase" }}>Field Report · Advisory Engine</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 22 }}>
+          {["Photo", "Crop", "Field", "Report"].map((label, i) => (
+            <div key={label} style={{ flex: 1 }}>
+              <div style={{ height: 4, borderRadius: 2, background: step > i ? "#4C7A3A" : "#D8CFB8" }} />
+              <div className="agri-font-mono" style={{ fontSize: 9.5, marginTop: 4, color: step > i ? "#3A2E1F" : "#9C8F72", letterSpacing: 0.5 }}>{String(i + 1).padStart(2, "0")} {label.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+
+        {step === 1 && (
+          <div className="agri-card" style={{ background: "#F9F6EC", borderRadius: 16, padding: 20 }}>
+            <div className="agri-font-display" style={{ fontSize: 19, fontWeight: 600, marginBottom: 6 }}>Photograph the leaf</div>
+            <div style={{ fontSize: 13.5, color: "#5C5138", marginBottom: 16, lineHeight: 1.5 }}>
+              Lay the leaf flat, fill the frame, avoid harsh shadow. One clear photo of the worst-affected leaf is enough.
+            </div>
+            {!imgSrc ? (
+              <button className="agri-btn" onClick={() => fileRef.current.click()} style={{ width: "100%", padding: "30px 16px", borderRadius: 12, border: "2px dashed #B7AB8A", background: "#F1ECDD", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                <Camera size={26} color="#6B5E45" />
+                <span style={{ fontSize: 13.5, color: "#6B5E45", fontWeight: 600 }}>Upload or take a photo</span>
+              </button>
+            ) : (
+              <div>
+                <img src={imgSrc} alt="leaf" style={{ width: "100%", borderRadius: 12, maxHeight: 260, objectFit: "cover" }} />
+                <button className="agri-btn" onClick={() => fileRef.current.click()} style={{ marginTop: 10, fontSize: 12.5, color: "#6B5E45", background: "none", border: "none", display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+                  <RotateCcw size={13} /> Retake photo
+                </button>
+              </div>
+            )}
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={(e) => handleFile(e.target.files[0])} />
+            <button className="agri-btn" disabled={!imgSrc} onClick={() => setStep(2)}
+              style={{ marginTop: 18, width: "100%", padding: "13px", borderRadius: 10, border: "none", background: imgSrc ? "#3A2E1F" : "#D8CFB8", color: imgSrc ? "#F4EFDF" : "#8A7F63", fontWeight: 600, fontSize: 14, cursor: imgSrc ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              Continue <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="agri-card" style={{ background: "#F9F6EC", borderRadius: 16, padding: 20 }}>
+            <div className="agri-font-display" style={{ fontSize: 19, fontWeight: 600, marginBottom: 6 }}>Which crop is this?</div>
+            <div style={{ fontSize: 13.5, color: "#5C5138", marginBottom: 16 }}>Treatment thresholds differ by crop.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {CROPS.map((c) => (
+                <button key={c} className="agri-btn" onClick={() => setCrop(c)}
+                  style={{ padding: "12px 10px", borderRadius: 10, border: crop === c ? "2px solid #4C7A3A" : "1px solid #D8CFB8", background: crop === c ? "#E6EEDA" : "#F1ECDD", fontWeight: 600, fontSize: 13, cursor: "pointer", color: "#2B2416" }}>
+                  {c}
+                </button>
+              ))}
+            </div>
+            <button className="agri-btn" onClick={() => setStep(3)} style={{ marginTop: 18, width: "100%", padding: "13px", borderRadius: 10, border: "none", background: "#3A2E1F", color: "#F4EFDF", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              Continue <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="agri-card" style={{ background: "#F9F6EC", borderRadius: 16, padding: 20 }}>
+            <div className="agri-font-display" style={{ fontSize: 19, fontWeight: 600, marginBottom: 6 }}>Where's the field?</div>
+            <div style={{ fontSize: 13.5, color: "#5C5138", marginBottom: 16 }}>Weather drives the treatment timing — rain washes spray off, wind causes drift.</div>
+            <button className="agri-btn" onClick={useMyLocation} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1px solid #4C7A3A", background: "#E6EEDA", color: "#3A5C2A", fontWeight: 600, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10 }}>
+              <MapPin size={15} /> Use current location
+            </button>
+            <div style={{ textAlign: "center", fontSize: 11.5, color: "#9C8F72", margin: "4px 0 10px" }}>— or type it —</div>
+            <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Village / town / district"
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #D8CFB8", fontSize: 14, background: "#F1ECDD", boxSizing: "border-box" }} />
+            <button className="agri-btn" disabled={!location} onClick={runAnalysis}
+              style={{ marginTop: 18, width: "100%", padding: "13px", borderRadius: 10, border: "none", background: location ? "#3A2E1F" : "#D8CFB8", color: location ? "#F4EFDF" : "#8A7F63", fontWeight: 600, fontSize: 14, cursor: location ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              {loading ? "Reading field signals…" : "Generate advisory"} {!loading && <ChevronRight size={16} />}
+            </button>
+          </div>
+        )}
+
+        {step === 4 && result && forecast && (
+          <div>
+            <div className="agri-card" style={{ background: "#F9F6EC", borderRadius: 16, padding: 20, marginBottom: 14, position: "relative", overflow: "hidden" }}>
+              <div className="agri-font-mono stamp-rotate" style={{ position: "absolute", top: 14, right: 14, border: `2px solid ${sevColor[result.diag.severity]}`, color: sevColor[result.diag.severity], borderRadius: 8, padding: "4px 8px", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5 }}>
+                {result.diag.severity.toUpperCase()} PRIORITY
+              </div>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <img src={imgSrc} alt="leaf" style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+                <div>
+                  <div className="agri-font-mono" style={{ fontSize: 10.5, color: "#6B5E45", marginBottom: 3 }}>{crop.toUpperCase()} · {location.toUpperCase()}</div>
+                  <div className="agri-font-display" style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.25 }}>{result.diag.label}</div>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, fontSize: 13.5, color: "#3E3624", lineHeight: 1.55 }}>{result.diag.summary}</div>
+              <div style={{ display: "flex", gap: 14, marginTop: 14, paddingTop: 14, borderTop: "1px solid #E2D9C0" }}>
+                <div><div className="agri-font-mono" style={{ fontSize: 10, color: "#9C8F72" }}>CONFIDENCE</div>
+                  <div className="agri-font-display" style={{ fontSize: 20, fontWeight: 700, color: "#3A2E1F" }}>{result.confidence}%</div></div>
+                <div><div className="agri-font-mono" style={{ fontSize: 10, color: "#9C8F72" }}>STRESS SIGNAL</div>
+                  <div className="agri-font-display" style={{ fontSize: 20, fontWeight: 700, color: "#3A2E1F" }}>{Math.round(result.stats.brownPct + result.stats.yellowPct + result.stats.darkPct)}%</div></div>
+              </div>
+              <div style={{ marginTop: 12, height: 8, borderRadius: 4, overflow: "hidden", display: "flex" }}>
+                <div style={{ width: `${result.stats.greenPct}%`, background: "#6B9B4A" }} />
+                <div style={{ width: `${result.stats.yellowPct}%`, background: "#D9B23C" }} />
+                <div style={{ width: `${result.stats.brownPct}%`, background: "#A3672E" }} />
+                <div style={{ width: `${result.stats.darkPct}%`, background: "#4A3B26" }} />
+                <div style={{ width: `${result.stats.otherPct}%`, background: "#CFC6AB" }} />
+              </div>
+              <div className="agri-font-mono" style={{ fontSize: 9.5, color: "#9C8F72", marginTop: 5, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <span>● green {Math.round(result.stats.greenPct)}%</span>
+                <span>● yellow {Math.round(result.stats.yellowPct)}%</span>
+                <span>● brown {Math.round(result.stats.brownPct)}%</span>
+                <span>● dark {Math.round(result.stats.darkPct)}%</span>
+              </div>
+            </div>
+
+            <div className="agri-card" style={{ background: "#F9F6EC", borderRadius: 16, padding: 20, marginBottom: 14 }}>
+              <div className="agri-font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 7 }}>
+                <CheckCircle2 size={17} color="#4C7A3A" /> What to do
+              </div>
+              <div style={{ fontSize: 13.5, color: "#3E3624", lineHeight: 1.55, marginBottom: result.diag.product ? 10 : 0 }}>{result.diag.action}</div>
+              {result.diag.product && (
+                <div style={{ background: "#F1ECDD", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, color: "#5C5138" }}>
+                  <span className="agri-font-mono" style={{ fontSize: 10, color: "#9C8F72" }}>SUGGESTED PRODUCT & RATE — </span>{result.diag.product}
+                </div>
+              )}
+            </div>
+
+            <div className="agri-card" style={{ background: "#F9F6EC", borderRadius: 16, padding: 20, marginBottom: 14 }}>
+              <div className="agri-font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}>
+                <CloudRain size={17} color="#3E6E8E" /> 5-day field ledger
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {forecast.map((d, i) => {
+                  const isBest = spray.best.idx === i;
+                  return (
+                    <div key={i} style={{ flex: 1, background: isBest ? "#E6EEDA" : "#F1ECDD", border: isBest ? "1.5px solid #4C7A3A" : "1px solid #E2D9C0", borderRadius: 10, padding: "8px 4px", textAlign: "center", position: "relative" }}>
+                      {isBest && <Stamp size={12} color="#4C7A3A" style={{ position: "absolute", top: -6, right: -4 }} />}
+                      <div className="agri-font-mono" style={{ fontSize: 9, color: "#6B5E45", marginBottom: 4 }}>{d.day.toUpperCase()}</div>
+                      <ThermometerSun size={13} color="#C98A2C" style={{ margin: "0 auto" }} />
+                      <div className="agri-font-mono" style={{ fontSize: 11, fontWeight: 700, margin: "2px 0" }}>{d.temp}°</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2, fontSize: 9.5, color: "#3E6E8E" }}><Droplets size={9} />{d.rain}%</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2, fontSize: 9.5, color: "#6B5E45" }}><Wind size={9} />{d.wind}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="agri-card" style={{ background: spray.safe ? "#E6EEDA" : "#F3E3D6", borderRadius: 16, padding: 20, marginBottom: 14, border: `1.5px solid ${spray.safe ? "#4C7A3A" : "#C98A2C"}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                {spray.safe ? <CheckCircle2 size={19} color="#3A5C2A" /> : <AlertTriangle size={19} color="#8A5A20" />}
+                <div className="agri-font-display" style={{ fontSize: 16, fontWeight: 700, color: spray.safe ? "#3A5C2A" : "#8A5A20" }}>
+                  {spray.safe ? `Safe to act: ${spray.best.day}` : "No fully safe window this week"}
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: "#3E3624", lineHeight: 1.55 }}>
+                {spray.safe
+                  ? `${spray.best.day} has the lowest rain and wind risk (${spray.best.rain}% rain, ${spray.best.wind} km/h wind) — spray early morning before ${spray.best.temp > 32 ? "the heat builds" : "wind picks up"}, and give the field 2–3 dry days after.`
+                  : `Every upcoming day carries meaningful rain or wind risk. If treatment can't wait, spray on ${spray.best.day} (least-bad option) in the early morning calm, and prioritize removing infected leaves by hand today instead of waiting.`}
+              </div>
+            </div>
+
+            <button className="agri-btn" onClick={reset} style={{ width: "100%", padding: "13px", borderRadius: 10, border: "1px solid #B7AB8A", background: "transparent", color: "#6B5E45", fontWeight: 600, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <Upload size={14} /> New field report
+            </button>
+
+            <div className="agri-font-mono" style={{ fontSize: 9.5, color: "#9C8F72", textAlign: "center", marginTop: 14, lineHeight: 1.6 }}>
+              DEMO NOTE — diagnosis runs a transparent in-browser color-heuristic; weather is a deterministic offline simulation.
+            </div>
+          </div>
+        )}
+
+        <canvas ref={canvasRef} style={{ display: "none" }} />
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AgriScope />);
+</script>
+</body>
+</html>
