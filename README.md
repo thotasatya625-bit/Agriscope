@@ -1,0 +1,1 @@
+Agriscope is a field advisory and crop monitoring platform designed to assist farmers, agronomists, and researchers in making data-driven agricultural decisions. It provides insights into crop health, soil conditions, and weather forecasts, helping improve productivity and sustainability.
